@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Operación Dunkirk · Shaka Concejal 2026-2031</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root{
+    --bg:#1c1c1c; --panel:#262626; --panel2:#2f2f2f; --border:#3d3d3d;
+    --text:#f2f2f2; --muted:#a8a8a8; --accent:#e0b23c; --accent2:#4caf7d;
+    --danger:#d9534f;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh;
+  }
+  header{
+    padding:24px 28px; border-bottom:1px solid var(--border);
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;
+  }
+  header h1{margin:0; font-size:20px; letter-spacing:.5px;}
+  header p{margin:2px 0 0; color:var(--muted); font-size:13px;}
+  button{
+    cursor:pointer; border:none; border-radius:8px; padding:10px 16px;
+    font-size:14px; font-weight:600;
+  }
+  .btn-primary{background:var(--accent); color:#1c1c1c;}
+  .btn-secondary{background:var(--panel2); color:var(--text); border:1px solid var(--border);}
+  .btn-danger{background:transparent; color:var(--danger); border:1px solid var(--danger); padding:6px 10px; font-size:12px;}
+  .btn-edit{background:transparent; color:var(--accent); border:1px solid var(--accent); padding:6px 10px; font-size:12px; margin-right:6px;}
+
+  /* ---- Login ---- */
+  #login-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .login-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:36px 32px; width:100%; max-width:360px; text-align:center;
+  }
+  .login-card h1{font-size:18px; margin:0 0 4px;}
+  .login-card h2{font-size:14px; font-weight:400; color:var(--muted); margin:0 0 24px;}
+  .login-card input{
+    width:100%; padding:11px 12px; margin-bottom:12px; border-radius:8px;
+    border:1px solid var(--border); background:var(--panel2); color:var(--text); font-size:14px;
+  }
+  .login-card button{width:100%; margin-top:6px;}
+  #login-error{color:var(--danger); font-size:13px; min-height:18px; margin-top:10px;}
+
+  /* ---- App ---- */
+  #app-screen{display:none;}
+  main{padding:24px 28px; max-width:1200px; margin:0 auto;}
+  .tabs{display:flex; gap:8px; margin-bottom:20px; border-bottom:1px solid var(--border); flex-wrap:wrap;}
+  .tab-btn{
+    background:none; border:none; color:var(--muted); padding:10px 4px; margin-right:20px;
+    font-size:14px; border-bottom:2px solid transparent; border-radius:0;
+  }
+  .tab-btn.active{color:var(--text); border-bottom-color:var(--accent);}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px;}
+  .card h3{margin:0 0 16px; font-size:15px;}
+
+  form.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px;}
+  form.grid label{display:block; font-size:12px; color:var(--muted); margin-bottom:5px;}
+  form.grid input, form.grid select{
+    width:100%; padding:9px 10px; border-radius:8px; border:1px solid var(--border);
+    background:var(--panel2); color:var(--text); font-size:14px;
+  }
+  form.grid .full{grid-column:1/-1;}
+  #save-status, #master-save-status{font-size:13px; color:var(--accent2); margin-top:10px; min-height:16px;}
+
+  .stat-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:20px;}
+  .stat{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px;}
+  .stat .num{font-size:26px; font-weight:700;}
+  .stat .label{font-size:12px; color:var(--muted); margin-top:4px;}
+
+  .chart-row{display:grid; grid-template-columns:1.4fr 1fr; gap:20px;}
+  @media (max-width:800px){ .chart-row{grid-template-columns:1fr;} }
+  canvas{max-height:320px;}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap;}
+  th{color:var(--muted); font-weight:600; position:sticky; top:0; background:var(--panel);}
+  .table-wrap{overflow-x:auto; max-height:480px;}
+  .empty-msg{color:var(--muted); font-size:13px; padding:20px 0; text-align:center;}
+  .filter-bar{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:14px;}
+  .filter-bar input, .filter-bar select{
+    padding:9px 10px; border-radius:8px; border:1px solid var(--border);
+    background:var(--panel2); color:var(--text); min-width:220px;
+  }
+  .col-master{font-weight:600; color:var(--accent);}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>OPERACIÓN DUNKIRK</h1>
+    <h2>Shaka Concejal 2026 – 2031</h2>
+    <input id="login-user" type="text" placeholder="Usuario" autocomplete="username" />
+    <input id="login-pass" type="password" placeholder="Contraseña" autocomplete="current-password" />
+    <button class="btn-primary" onclick="doLogin()">Ingresar</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app-screen">
+  <header>
+    <div>
+      <h1>OPERACIÓN DUNKIRK</h1>
+      <p>Shaka Concejal 2026 – 2031 · Seguimiento del elector</p>
+    </div>
+    <button class="btn-secondary" onclick="doLogout()">Cerrar sesión</button>
+  </header>
+
+  <main>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')">Resumen</button>
+      <button class="tab-btn" data-tab="cargar" onclick="switchTab('cargar')">Cargar elector</button>
+      <button class="tab-btn" data-tab="listado" onclick="switchTab('listado')">Listado</button>
+      <button class="tab-btn" data-tab="masters" onclick="switchTab('masters')">Masters</button>
+    </div>
+
+    <!-- ---- DASHBOARD ---- -->
+    <div class="tab-panel active" id="tab-dashboard">
+      <div class="stat-row" id="stat-row"></div>
+      <div class="chart-row">
+        <div class="card">
+          <h3>Avance por Colegio Electoral</h3>
+          <canvas id="chart-colegio"></canvas>
+        </div>
+        <div class="card">
+          <h3>Distribución del Voto</h3>
+          <canvas id="chart-voto"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- CARGAR ---- -->
+    <div class="tab-panel" id="tab-cargar">
+      <div class="card">
+        <h3>Registrar elector</h3>
+        <form class="grid" id="form-elector" onsubmit="return saveElector(event)">
+          <div>
+            <label>Master</label>
+            <select name="master_id" id="select-master-elector" required>
+              <option value="">-- seleccionar master --</option>
+            </select>
+          </div>
+          <div>
+            <label>Elector</label>
+            <input name="elector" required />
+          </div>
+          <div>
+            <label>Teléfono elector</label>
+            <input name="telefono_elector" />
+          </div>
+          <div>
+            <label>Voto</label>
+            <select name="voto">
+              <option value="">-- seleccionar --</option>
+              <option>A favor</option>
+              <option>Indeciso</option>
+              <option>En contra</option>
+              <option>No define</option>
+            </select>
+          </div>
+          <div>
+            <label>Colegio electoral</label>
+            <input name="colegio_electoral" />
+          </div>
+          <div>
+            <label>Móvil asignado</label>
+            <input name="movil_asignado" />
+          </div>
+          <div>
+            <label>Chofer</label>
+            <input name="chofer" />
+          </div>
+          <div>
+            <label>Teléfono chofer</label>
+            <input name="telefono_chofer" />
+          </div>
+          <div class="full">
+            <button class="btn-primary" type="submit">Guardar elector</button>
+            <div id="save-status"></div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ---- LISTADO ---- -->
+    <div class="tab-panel" id="tab-listado">
+      <div class="card">
+        <div class="filter-bar">
+          <select id="filter-master" onchange="renderTable()">
+            <option value="">Todos los masters</option>
+          </select>
+          <input id="search-input" type="text" placeholder="Buscar por elector, colegio, chofer..." oninput="renderTable()" />
+        </div>
+        <div class="table-wrap">
+          <table id="data-table">
+            <thead>
+              <tr>
+                <th>Master</th><th>Tel. master</th><th>Elector</th><th>Tel. elector</th><th>Voto</th>
+                <th>Colegio</th><th>Móvil</th><th>Chofer</th><th>Tel. chofer</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="table-body"></tbody>
+          </table>
+          <div class="empty-msg" id="empty-msg" style="display:none;">Todavía no cargaste electores.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- MASTERS ---- -->
+    <div class="tab-panel" id="tab-masters">
+      <div class="card">
+        <h3 id="master-form-title">Agregar master</h3>
+        <form class="grid" id="form-master" onsubmit="return saveMaster(event)">
+          <input type="hidden" name="id" />
+          <div>
+            <label>Nombre del master</label>
+            <input name="nombre" required />
+          </div>
+          <div>
+            <label>Teléfono</label>
+            <input name="telefono" />
+          </div>
+          <div class="full">
+            <button class="btn-primary" type="submit" id="master-submit-btn">Guardar master</button>
+            <button class="btn-secondary" type="button" id="master-cancel-btn" style="display:none;" onclick="cancelEditMaster()">Cancelar edición</button>
+            <div id="master-save-status"></div>
+          </div>
+        </form>
+      </div>
+      <div class="card">
+        <h3>Masters registrados</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nombre</th><th>Teléfono</th><th>Electores a cargo</th><th></th></tr></thead>
+            <tbody id="masters-table-body"></tbody>
+          </table>
+          <div class="empty-msg" id="masters-empty-msg" style="display:none;">Todavía no cargaste masters.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ==========================================================
+   CONFIGURACIÓN — completar con los datos de tu proyecto Supabase
+   (Panel del proyecto -> Settings -> API)
+   ========================================================== */
+const SUPABASE_URL = "https://TU-PROYECTO.supabase.co";
+const SUPABASE_ANON_KEY = "TU-ANON-KEY";
+
+// Mapeo usuario -> email real usado en Supabase Auth.
+// El usuario ve "Vperalta", pero por debajo se loguea con este email.
+const USER_EMAIL_MAP = {
+  "vperalta": "vperalta@operaciondunkirk.com"
+};
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let allRows = [];
+let allMasters = [];
+let chartColegio, chartVoto;
+
+/* ---------- LOGIN ---------- */
+async function doLogin(){
+  const userField = document.getElementById('login-user').value.trim().toLowerCase();
+  const pass = document.getElementById('login-pass').value;
+  const errBox = document.getElementById('login-error');
+  errBox.textContent = "";
+
+  const email = USER_EMAIL_MAP[userField] || userField; // permite loguear con email directo también
+  if(!email || !pass){
+    errBox.textContent = "Completá usuario y contraseña.";
+    return;
+  }
+  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if(error){
+    errBox.textContent = "Usuario o contraseña incorrectos.";
+    return;
+  }
+  showApp();
+}
+
+async function doLogout(){
+  await sb.auth.signOut();
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+async function checkSession(){
+  const { data } = await sb.auth.getSession();
+  if(data.session){
+    showApp();
+  }
+}
+
+function showApp(){
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  loadAll();
+}
+
+async function loadAll(){
+  await loadMasters();
+  await loadData();
+}
+
+/* ---------- TABS ---------- */
+function switchTab(name){
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+}
+
+/* =========================================================
+   MASTERS — alta / baja / edición
+   ========================================================= */
+async function loadMasters(){
+  const { data, error } = await sb.from('masters').select('*').order('nombre', { ascending:true });
+  if(error){ console.error(error); return; }
+  allMasters = data || [];
+  renderMasterSelects();
+  renderMastersTable();
+}
+
+function renderMasterSelects(){
+  const opts = allMasters.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('');
+
+  const selElector = document.getElementById('select-master-elector');
+  const currentElector = selElector.value;
+  selElector.innerHTML = '<option value="">-- seleccionar master --</option>' + opts;
+  if(currentElector) selElector.value = currentElector;
+
+  const selFilter = document.getElementById('filter-master');
+  const currentFilter = selFilter.value;
+  selFilter.innerHTML = '<option value="">Todos los masters</option>' + opts;
+  if(currentFilter) selFilter.value = currentFilter;
+}
+
+function renderMastersTable(){
+  const tbody = document.getElementById('masters-table-body');
+  const emptyMsg = document.getElementById('masters-empty-msg');
+
+  if(allMasters.length === 0){
+    tbody.innerHTML = '';
+    emptyMsg.style.display = 'block';
+    return;
+  }
+  emptyMsg.style.display = 'none';
+
+  tbody.innerHTML = allMasters.map(m => {
+    const count = allRows.filter(r => r.master_id === m.id).length;
+    return `
+      <tr>
+        <td>${m.nombre}</td>
+        <td>${m.telefono || ''}</td>
+        <td>${count}</td>
+        <td>
+          <button class="btn-edit" onclick="editMaster('${m.id}')">Editar</button>
+          <button class="btn-danger" onclick="deleteMaster('${m.id}')">Borrar</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function saveMaster(e){
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  const id = fd.get('id');
+  const record = { nombre: fd.get('nombre'), telefono: fd.get('telefono') };
+  const statusBox = document.getElementById('master-save-status');
+
+  let error;
+  if(id){
+    ({ error } = await sb.from('masters').update(record).eq('id', id));
+  } else {
+    ({ error } = await sb.from('masters').insert([record]));
+  }
+
+  if(error){
+    statusBox.style.color = 'var(--danger)';
+    statusBox.textContent = 'Error al guardar: ' + error.message;
+    return false;
+  }
+
+  statusBox.style.color = 'var(--accent2)';
+  statusBox.textContent = id ? 'Master actualizado ✓' : 'Master creado ✓';
+  cancelEditMaster();
+  setTimeout(() => statusBox.textContent = '', 2500);
+  await loadMasters();
+  await loadData();
+  return false;
+}
+
+function editMaster(id){
+  const m = allMasters.find(x => x.id === id);
+  if(!m) return;
+  const form = document.getElementById('form-master');
+  form.elements['id'].value = m.id;
+  form.elements['nombre'].value = m.nombre || '';
+  form.elements['telefono'].value = m.telefono || '';
+  document.getElementById('master-form-title').textContent = 'Editar master';
+  document.getElementById('master-submit-btn').textContent = 'Actualizar master';
+  document.getElementById('master-cancel-btn').style.display = 'inline-block';
+  switchTab('masters');
+  form.scrollIntoView({ behavior:'smooth' });
+}
+
+function cancelEditMaster(){
+  const form = document.getElementById('form-master');
+  form.reset();
+  form.elements['id'].value = '';
+  document.getElementById('master-form-title').textContent = 'Agregar master';
+  document.getElementById('master-submit-btn').textContent = 'Guardar master';
+  document.getElementById('master-cancel-btn').style.display = 'none';
+}
+
+async function deleteMaster(id){
+  const count = allRows.filter(r => r.master_id === id).length;
+  const warning = count > 0
+    ? `Este master tiene ${count} elector(es) cargado(s), que quedarán sin master asignado. ¿Borrar de todas formas?`
+    : '¿Borrar este master?';
+  if(!confirm(warning)) return;
+  await sb.from('masters').delete().eq('id', id);
+  await loadMasters();
+  await loadData();
+}
+
+/* =========================================================
+   ELECTORES
+   ========================================================= */
+async function saveElector(e){
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  const record = Object.fromEntries(fd.entries());
+  const statusBox = document.getElementById('save-status');
+
+  const { error } = await sb.from('electores').insert([record]);
+  if(error){
+    statusBox.style.color = 'var(--danger)';
+    statusBox.textContent = 'Error al guardar: ' + error.message;
+    return false;
+  }
+  statusBox.style.color = 'var(--accent2)';
+  statusBox.textContent = 'Elector guardado ✓';
+  form.reset();
+  setTimeout(() => statusBox.textContent = '', 2500);
+  await loadData();
+  return false;
+}
+
+async function deleteElector(id){
+  if(!confirm('¿Borrar este registro?')) return;
+  await sb.from('electores').delete().eq('id', id);
+  await loadData();
+}
+
+async function loadData(){
+  const { data, error } = await sb
+    .from('electores')
+    .select('*, master:masters(id, nombre, telefono)')
+    .order('created_at', { ascending:false });
+  if(error){ console.error(error); return; }
+  allRows = data || [];
+  renderStats();
+  renderCharts();
+  renderTable();
+  renderMastersTable();
+}
+
+/* ---------- ESTADÍSTICAS ---------- */
+function renderStats(){
+  const total = allRows.length;
+  const colegios = new Set(allRows.map(r => r.colegio_electoral).filter(Boolean)).size;
+  const aFavor = allRows.filter(r => r.voto === 'A favor').length;
+  const sinMaster = allRows.filter(r => !r.master_id).length;
+
+  document.getElementById('stat-row').innerHTML = `
+    <div class="stat"><div class="num">${total}</div><div class="label">Electores cargados</div></div>
+    <div class="stat"><div class="num">${colegios}</div><div class="label">Colegios electorales</div></div>
+    <div class="stat"><div class="num">${aFavor}</div><div class="label">A favor</div></div>
+    <div class="stat"><div class="num">${sinMaster}</div><div class="label">Sin master asignado</div></div>
+  `;
+}
+
+/* ---------- GRÁFICOS ---------- */
+function countBy(field){
+  const map = {};
+  allRows.forEach(r => {
+    const key = r[field] && r[field].trim() ? r[field] : 'Sin dato';
+    map[key] = (map[key] || 0) + 1;
+  });
+  return map;
+}
+
+function renderCharts(){
+  const byColegio = countBy('colegio_electoral');
+  const byVoto = countBy('voto');
+
+  const colegioLabels = Object.keys(byColegio);
+  const colegioData = Object.values(byColegio);
+
+  const votoLabels = Object.keys(byVoto);
+  const votoData = Object.values(byVoto);
+  const votoColors = votoLabels.map(l => ({
+    'A favor':'#4caf7d', 'Indeciso':'#e0b23c', 'En contra':'#d9534f', 'No define':'#8a8a8a', 'Sin dato':'#5a5a5a'
+  }[l] || '#6a6a9a'));
+
+  if(chartColegio) chartColegio.destroy();
+  chartColegio = new Chart(document.getElementById('chart-colegio'), {
+    type: 'bar',
+    data: { labels: colegioLabels, datasets: [{ label:'Electores', data: colegioData, backgroundColor:'#e0b23c', borderRadius:4 }] },
+    options: {
+      responsive:true,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ ticks:{ color:'#a8a8a8' }, grid:{ color:'#3d3d3d' } },
+        y:{ beginAtZero:true, ticks:{ color:'#a8a8a8', precision:0 }, grid:{ color:'#3d3d3d' } }
+      }
+    }
+  });
+
+  if(chartVoto) chartVoto.destroy();
+  chartVoto = new Chart(document.getElementById('chart-voto'), {
+    type: 'doughnut',
+    data: { labels: votoLabels, datasets: [{ data: votoData, backgroundColor: votoColors, borderColor:'#1c1c1c', borderWidth:2 }] },
+    options: {
+      responsive:true,
+      plugins:{ legend:{ position:'bottom', labels:{ color:'#f2f2f2' } } }
+    }
+  });
+}
+
+/* ---------- TABLA DE ELECTORES ---------- */
+function renderTable(){
+  const term = (document.getElementById('search-input').value || '').toLowerCase();
+  const masterFilter = document.getElementById('filter-master').value;
+
+  const rows = allRows.filter(r => {
+    if(masterFilter && r.master_id !== masterFilter) return false;
+    if(!term) return true;
+    const masterNombre = (r.master && r.master.nombre) || '';
+    return ['elector','colegio_electoral','chofer'].some(f => (r[f]||'').toLowerCase().includes(term))
+      || masterNombre.toLowerCase().includes(term);
+  });
+
+  const tbody = document.getElementById('table-body');
+  const emptyMsg = document.getElementById('empty-msg');
+
+  if(rows.length === 0){
+    tbody.innerHTML = '';
+    emptyMsg.style.display = 'block';
+    return;
+  }
+  emptyMsg.style.display = 'none';
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="col-master">${(r.master && r.master.nombre) || '<em>Sin master</em>'}</td>
+      <td>${(r.master && r.master.telefono) || ''}</td>
+      <td>${r.elector || ''}</td>
+      <td>${r.telefono_elector || ''}</td>
+      <td>${r.voto || ''}</td>
+      <td>${r.colegio_electoral || ''}</td>
+      <td>${r.movil_asignado || ''}</td>
+      <td>${r.chofer || ''}</td>
+      <td>${r.telefono_chofer || ''}</td>
+      <td><button class="btn-danger" onclick="deleteElector('${r.id}')">Borrar</button></td>
+    </tr>
+  `).join('');
+}
+
+checkSession();
+</script>
+</body>
+</html>
