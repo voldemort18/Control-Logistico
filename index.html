@@ -130,7 +130,12 @@
         <p>Shaka Concejal 2026 – 2031 · Seguimiento del elector</p>
       </div>
     </div>
-    <button class="btn-secondary" onclick="doLogout()">Cerrar sesión</button>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button class="btn-secondary" id="backup-btn" onclick="downloadBackup()">Descargar backup</button>
+      <button class="btn-secondary" id="restore-btn" onclick="document.getElementById('restore-file-input').click()">Restaurar backup</button>
+      <input type="file" id="restore-file-input" accept="application/json" style="display:none;" onchange="restoreBackup(event)" />
+      <button class="btn-secondary" onclick="doLogout()">Cerrar sesión</button>
+    </div>
   </header>
 
   <main>
@@ -315,6 +320,122 @@ async function doLogout(){
   await sb.auth.signOut();
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
+}
+
+/* ---------- BACKUP MANUAL ---------- */
+async function downloadBackup(){
+  const btn = document.getElementById('backup-btn');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Generando backup...';
+
+  try {
+    const [mastersRes, electoresRes] = await Promise.all([
+      sb.from('masters').select('*').order('nombre', { ascending:true }),
+      sb.from('electores').select('*').order('created_at', { ascending:false })
+    ]);
+
+    if(mastersRes.error) throw mastersRes.error;
+    if(electoresRes.error) throw electoresRes.error;
+
+    const backup = {
+      app: 'Operación Dunkirk · Shaka Concejal 2026-2031',
+      generado_en: new Date().toISOString(),
+      masters: mastersRes.data || [],
+      electores: electoresRes.data || []
+    };
+
+    const json = JSON.stringify(backup, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const fecha = new Date().toISOString().slice(0,10);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup-dunkirk-${fecha}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch(err) {
+    alert('Error al generar el backup: ' + (err.message || err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
+/* ---------- RESTAURAR BACKUP ---------- */
+async function restoreBackup(event){
+  const fileInput = event.target;
+  const file = fileInput.files[0];
+  if(!file) return;
+
+  let backup;
+  try {
+    const text = await file.text();
+    backup = JSON.parse(text);
+  } catch(err) {
+    alert('El archivo no es un backup válido (no se pudo leer como JSON).');
+    fileInput.value = '';
+    return;
+  }
+
+  const masters = Array.isArray(backup.masters) ? backup.masters : [];
+  const electores = Array.isArray(backup.electores) ? backup.electores : [];
+
+  if(masters.length === 0 && electores.length === 0){
+    alert('Ese archivo no tiene masters ni electores para restaurar.');
+    fileInput.value = '';
+    return;
+  }
+
+  const generadoEn = backup.generado_en ? new Date(backup.generado_en).toLocaleString() : 'fecha desconocida';
+  const confirmMsg =
+    `Este backup fue generado el ${generadoEn}.\n\n` +
+    `Contiene ${masters.length} masters y ${electores.length} electores.\n\n` +
+    `Se van a insertar/actualizar en la base actual (los que ya existan con el mismo ID se sobrescriben, los nuevos se agregan). No se borra nada que no esté en el backup.\n\n` +
+    `¿Confirmás restaurar?`;
+  if(!confirm(confirmMsg)){
+    fileInput.value = '';
+    return;
+  }
+
+  const btn = document.getElementById('restore-btn');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+
+  try {
+    // Los masters van primero: electores.master_id depende de que el master ya exista.
+    btn.textContent = `Restaurando masters (0/${masters.length})...`;
+    await upsertInChunks('masters', masters, 500, (done, total) => {
+      btn.textContent = `Restaurando masters (${done}/${total})...`;
+    });
+
+    btn.textContent = `Restaurando electores (0/${electores.length})...`;
+    await upsertInChunks('electores', electores, 500, (done, total) => {
+      btn.textContent = `Restaurando electores (${done}/${total})...`;
+    });
+
+    alert('Backup restaurado con éxito.');
+    await loadAll();
+  } catch(err) {
+    alert('Error al restaurar el backup: ' + (err.message || err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+    fileInput.value = '';
+  }
+}
+
+// Sube un array grande a una tabla en bloques, para no mandar todo en un solo pedido.
+async function upsertInChunks(table, rows, chunkSize, onProgress){
+  for(let i = 0; i < rows.length; i += chunkSize){
+    const chunk = rows.slice(i, i + chunkSize);
+    const { error } = await sb.from(table).upsert(chunk, { onConflict: 'id' });
+    if(error) throw error;
+    if(onProgress) onProgress(Math.min(i + chunkSize, rows.length), rows.length);
+  }
 }
 
 async function checkSession(){
