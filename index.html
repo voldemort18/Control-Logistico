@@ -164,8 +164,9 @@
     <!-- ---- CARGAR ---- -->
     <div class="tab-panel" id="tab-cargar">
       <div class="card">
-        <h3>Registrar elector</h3>
+        <h3 id="elector-form-title">Registrar elector</h3>
         <form class="grid" id="form-elector" onsubmit="return saveElector(event)">
+          <input type="hidden" name="id" id="elector-id" />
           <div>
             <label>Master</label>
             <input type="text" id="master-elector-search" list="masters-datalist-elector" placeholder="Escribí para buscar un master..." autocomplete="off" oninput="onMasterSearchInput('elector')" required />
@@ -207,7 +208,8 @@
             <input name="telefono_chofer" />
           </div>
           <div class="full">
-            <button class="btn-primary" type="submit">Guardar elector</button>
+            <button class="btn-primary" type="submit" id="elector-submit-btn">Guardar elector</button>
+            <button class="btn-secondary" type="button" id="elector-cancel-btn" style="display:none;" onclick="cancelEditElector()">Cancelar edición</button>
             <div id="save-status"></div>
           </div>
         </form>
@@ -604,6 +606,8 @@ async function saveElector(e){
   const form = e.target;
   const fd = new FormData(form);
   const record = Object.fromEntries(fd.entries());
+  const id = record.id;
+  delete record.id;
   const statusBox = document.getElementById('save-status');
 
   if(!record.master_id){
@@ -612,18 +616,60 @@ async function saveElector(e){
     return false;
   }
 
-  const { error } = await sb.from('electores').insert([record]);
+  let error;
+  if(id){
+    ({ error } = await sb.from('electores').update(record).eq('id', id));
+  } else {
+    ({ error } = await sb.from('electores').insert([record]));
+  }
+
   if(error){
     statusBox.style.color = 'var(--danger)';
     statusBox.textContent = 'Error al guardar: ' + error.message;
     return false;
   }
   statusBox.style.color = 'var(--accent2)';
-  statusBox.textContent = 'Elector guardado ✓';
-  form.reset();
+  statusBox.textContent = id ? 'Elector actualizado ✓' : 'Elector guardado ✓';
+  cancelEditElector();
   setTimeout(() => statusBox.textContent = '', 2500);
   await loadData();
   return false;
+}
+
+function editElector(id){
+  const r = allRows.find(x => x.id === id);
+  if(!r) return;
+  const form = document.getElementById('form-elector');
+
+  form.elements['id'].value = r.id;
+  form.elements['elector'].value = r.elector || '';
+  form.elements['telefono_elector'].value = r.telefono_elector || '';
+  form.elements['voto'].value = r.voto || '';
+  form.elements['colegio_electoral'].value = r.colegio_electoral || '';
+  form.elements['movil_asignado'].value = r.movil_asignado || '';
+  form.elements['chofer'].value = r.chofer || '';
+  form.elements['telefono_chofer'].value = r.telefono_chofer || '';
+
+  const masterNombre = (r.master && r.master.nombre) || '';
+  document.getElementById('master-elector-search').value = masterNombre;
+  document.getElementById('master-elector-id').value = r.master_id || '';
+
+  document.getElementById('elector-form-title').textContent = 'Editar elector';
+  document.getElementById('elector-submit-btn').textContent = 'Actualizar elector';
+  document.getElementById('elector-cancel-btn').style.display = 'inline-block';
+
+  switchTab('cargar');
+  form.scrollIntoView({ behavior:'smooth' });
+}
+
+function cancelEditElector(){
+  const form = document.getElementById('form-elector');
+  form.reset();
+  form.elements['id'].value = '';
+  document.getElementById('master-elector-id').value = '';
+  document.getElementById('elector-form-title').textContent = 'Registrar elector';
+  document.getElementById('elector-submit-btn').textContent = 'Guardar elector';
+  document.getElementById('elector-cancel-btn').style.display = 'none';
 }
 
 async function deleteElector(id){
@@ -742,7 +788,10 @@ function renderTable(){
       <td>${r.movil_asignado || ''}</td>
       <td>${r.chofer || ''}</td>
       <td>${r.telefono_chofer || ''}</td>
-      <td><button class="btn-danger" onclick="deleteElector('${r.id}')">Borrar</button></td>
+      <td>
+        <button class="btn-edit" onclick="editElector('${r.id}')">Editar</button>
+        <button class="btn-danger" onclick="deleteElector('${r.id}')">Borrar</button>
+      </td>
     </tr>
   `).join('');
 }
