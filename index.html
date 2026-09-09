@@ -484,7 +484,9 @@ function renderMasterSelects(){
   const opts = allMasters.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('');
   const selFilter = document.getElementById('filter-master');
   const currentFilter = selFilter.value;
-  selFilter.innerHTML = '<option value="">Todos los masters</option>' + opts;
+  selFilter.innerHTML = '<option value="">Todos los masters</option>'
+    + '<option value="__sin_master__">(Sin master asignado)</option>'
+    + opts;
   if(currentFilter) selFilter.value = currentFilter;
 }
 
@@ -702,7 +704,7 @@ function renderStats(){
     <div class="stat"><div class="num">${total}</div><div class="label">Electores cargados</div></div>
     <div class="stat"><div class="num">${colegios}</div><div class="label">Colegios electorales</div></div>
     <div class="stat"><div class="num">${aFavor}</div><div class="label">A favor</div></div>
-    <div class="stat"><div class="num">${sinMaster}</div><div class="label">Sin master asignado</div></div>
+    <div class="stat" style="cursor:pointer;" onclick="verSinMaster()" title="Ver el listado filtrado"><div class="num">${sinMaster}</div><div class="label">Sin master asignado</div></div>
   `;
 }
 
@@ -754,13 +756,26 @@ function renderCharts(){
   });
 }
 
+// Atajo desde la tarjeta del dashboard: va al Listado ya filtrado por "sin master".
+function verSinMaster(){
+  switchTab('listado');
+  const sel = document.getElementById('filter-master');
+  sel.value = '__sin_master__';
+  document.getElementById('search-input').value = '';
+  renderTable();
+}
+
 /* ---------- TABLA DE ELECTORES ---------- */
 function renderTable(){
   const term = (document.getElementById('search-input').value || '').toLowerCase();
   const masterFilter = document.getElementById('filter-master').value;
 
   const rows = allRows.filter(r => {
-    if(masterFilter && r.master_id !== masterFilter) return false;
+    if(masterFilter === '__sin_master__'){
+      if(r.master_id) return false;
+    } else if(masterFilter && r.master_id !== masterFilter){
+      return false;
+    }
     if(!term) return true;
     const masterNombre = (r.master && r.master.nombre) || '';
     return ['elector','colegio_electoral','chofer'].some(f => (r[f]||'').toLowerCase().includes(term))
