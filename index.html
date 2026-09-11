@@ -38,6 +38,10 @@
   .btn-secondary{background:var(--panel2); color:var(--text); border:1px solid var(--border);}
   .btn-danger{background:transparent; color:var(--danger); border:1px solid var(--danger); padding:6px 10px; font-size:12px;}
   .btn-edit{background:transparent; color:var(--gold); border:1px solid var(--gold); padding:6px 10px; font-size:12px; margin-right:6px;}
+  .btn-toggle{background:transparent; color:var(--muted); border:1px solid var(--border);}
+  .btn-toggle.active{background:var(--danger); color:#fff; border-color:var(--danger);}
+  tr.row-duplicate{background:rgba(226,87,76,0.12);}
+  tr.row-duplicate td.col-master{box-shadow:inset 3px 0 0 var(--danger);}
   .brand-logo{display:block; margin:0 auto 16px; width:72px; height:72px; object-fit:contain;}
   header .brand-logo{margin:0; width:44px; height:44px;}
   header .brand{display:flex; align-items:center; gap:12px;}
@@ -227,6 +231,7 @@
             <option value="">Todos los colegios</option>
           </select>
           <input id="search-input" type="text" placeholder="Buscar por elector, colegio, chofer..." oninput="renderTable()" />
+          <button type="button" class="btn-toggle" id="dup-toggle-btn" onclick="toggleDuplicates()">Ver duplicados</button>
         </div>
         <div class="table-wrap">
           <table id="data-table">
@@ -299,6 +304,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let allRows = [];
 let allMasters = [];
+let duplicatesOnly = false;
 let chartColegio, chartVoto;
 
 /* ---------- LOGIN ---------- */
@@ -716,12 +722,14 @@ function renderStats(){
   const colegios = new Set(allRows.map(r => r.colegio_electoral).filter(Boolean)).size;
   const aFavor = allRows.filter(r => r.voto === 'A favor').length;
   const sinMaster = allRows.filter(r => !r.master_id).length;
+  const duplicados = getDuplicateRowIds().size;
 
   document.getElementById('stat-row').innerHTML = `
     <div class="stat"><div class="num">${total}</div><div class="label">Electores cargados</div></div>
     <div class="stat"><div class="num">${colegios}</div><div class="label">Colegios electorales</div></div>
     <div class="stat"><div class="num">${aFavor}</div><div class="label">A favor</div></div>
     <div class="stat" style="cursor:pointer;" onclick="verSinMaster()" title="Ver el listado filtrado"><div class="num">${sinMaster}</div><div class="label">Sin master asignado</div></div>
+    <div class="stat" style="cursor:pointer;" onclick="verDuplicados()" title="Ver el listado filtrado"><div class="num">${duplicados}</div><div class="label">Electores duplicados</div></div>
   `;
 }
 
@@ -773,6 +781,42 @@ function renderCharts(){
   });
 }
 
+// Devuelve el set de ids de electores que están repetidos: mismo master +
+// mismo nombre de elector (sin importar mayúsculas/espacios).
+function getDuplicateRowIds(){
+  const groups = new Map();
+  allRows.forEach(r => {
+    if(!r.master_id) return; // "sin master" se controla aparte, no como duplicado
+    const key = r.master_id + '|' + (r.elector || '').trim().toLowerCase();
+    if(!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r.id);
+  });
+  const dupIds = new Set();
+  groups.forEach(ids => { if(ids.length > 1) ids.forEach(id => dupIds.add(id)); });
+  return dupIds;
+}
+
+function toggleDuplicates(){
+  duplicatesOnly = !duplicatesOnly;
+  const btn = document.getElementById('dup-toggle-btn');
+  btn.classList.toggle('active', duplicatesOnly);
+  btn.textContent = duplicatesOnly ? 'Viendo duplicados ✕' : 'Ver duplicados';
+  renderTable();
+}
+
+// Atajo desde la tarjeta del dashboard: va al Listado ya filtrado por duplicados.
+function verDuplicados(){
+  switchTab('listado');
+  document.getElementById('filter-master').value = '';
+  document.getElementById('filter-colegio').value = '';
+  document.getElementById('search-input').value = '';
+  duplicatesOnly = true;
+  const btn = document.getElementById('dup-toggle-btn');
+  btn.classList.add('active');
+  btn.textContent = 'Viendo duplicados ✕';
+  renderTable();
+}
+
 // Llena el desplegable de "Colegio electoral" en el Listado con los valores
 // realmente cargados (únicos, ordenados alfabéticamente).
 function renderColegioFilter(){
@@ -799,6 +843,7 @@ function renderTable(){
   const term = (document.getElementById('search-input').value || '').toLowerCase();
   const masterFilter = document.getElementById('filter-master').value;
   const colegioFilter = document.getElementById('filter-colegio').value;
+  const dupIds = getDuplicateRowIds();
 
   const rows = allRows.filter(r => {
     if(masterFilter === '__sin_master__'){
@@ -807,6 +852,7 @@ function renderTable(){
       return false;
     }
     if(colegioFilter && (r.colegio_electoral || '').trim() !== colegioFilter) return false;
+    if(duplicatesOnly && !dupIds.has(r.id)) return false;
     if(!term) return true;
     const masterNombre = (r.master && r.master.nombre) || '';
     return ['elector','colegio_electoral','chofer'].some(f => (r[f]||'').toLowerCase().includes(term))
@@ -824,7 +870,7 @@ function renderTable(){
   emptyMsg.style.display = 'none';
 
   tbody.innerHTML = rows.map(r => `
-    <tr>
+    <tr class="${dupIds.has(r.id) ? 'row-duplicate' : ''}">
       <td class="col-master">${(r.master && r.master.nombre) || '<em>Sin master</em>'}</td>
       <td>${(r.master && r.master.telefono) || ''}</td>
       <td>${r.elector || ''}</td>
