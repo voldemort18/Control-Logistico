@@ -223,6 +223,9 @@
           <select id="filter-master" onchange="renderTable()">
             <option value="">Todos los masters</option>
           </select>
+          <select id="filter-colegio" onchange="renderTable()">
+            <option value="">Todos los colegios</option>
+          </select>
           <input id="search-input" type="text" placeholder="Buscar por elector, colegio, chofer..." oninput="renderTable()" />
         </div>
         <div class="table-wrap">
@@ -618,6 +621,19 @@ async function saveElector(e){
     return false;
   }
 
+  const nombreNuevo = (record.elector || '').trim().toLowerCase();
+  const yaExiste = allRows.some(r =>
+    r.id !== id &&
+    r.master_id === record.master_id &&
+    (r.elector || '').trim().toLowerCase() === nombreNuevo
+  );
+  if(yaExiste){
+    const masterNombre = document.getElementById('master-elector-search').value;
+    statusBox.style.color = 'var(--danger)';
+    statusBox.textContent = `Este elector ya está catastrado para el master "${masterNombre}". No se puede cargar de nuevo.`;
+    return false;
+  }
+
   let error;
   if(id){
     ({ error } = await sb.from('electores').update(record).eq('id', id));
@@ -687,6 +703,7 @@ async function loadData(){
     .order('created_at', { ascending:false });
   if(error){ console.error(error); return; }
   allRows = data || [];
+  renderColegioFilter();
   renderStats();
   renderCharts();
   renderTable();
@@ -756,6 +773,18 @@ function renderCharts(){
   });
 }
 
+// Llena el desplegable de "Colegio electoral" en el Listado con los valores
+// realmente cargados (únicos, ordenados alfabéticamente).
+function renderColegioFilter(){
+  const selColegio = document.getElementById('filter-colegio');
+  const currentColegio = selColegio.value;
+  const colegios = [...new Set(allRows.map(r => (r.colegio_electoral || '').trim()).filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b, 'es'));
+  const opts = colegios.map(c => `<option value="${c}">${c}</option>`).join('');
+  selColegio.innerHTML = '<option value="">Todos los colegios</option>' + opts;
+  if(currentColegio) selColegio.value = currentColegio;
+}
+
 // Atajo desde la tarjeta del dashboard: va al Listado ya filtrado por "sin master".
 function verSinMaster(){
   switchTab('listado');
@@ -769,6 +798,7 @@ function verSinMaster(){
 function renderTable(){
   const term = (document.getElementById('search-input').value || '').toLowerCase();
   const masterFilter = document.getElementById('filter-master').value;
+  const colegioFilter = document.getElementById('filter-colegio').value;
 
   const rows = allRows.filter(r => {
     if(masterFilter === '__sin_master__'){
@@ -776,6 +806,7 @@ function renderTable(){
     } else if(masterFilter && r.master_id !== masterFilter){
       return false;
     }
+    if(colegioFilter && (r.colegio_electoral || '').trim() !== colegioFilter) return false;
     if(!term) return true;
     const masterNombre = (r.master && r.master.nombre) || '';
     return ['elector','colegio_electoral','chofer'].some(f => (r[f]||'').toLowerCase().includes(term))
