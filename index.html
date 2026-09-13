@@ -153,6 +153,11 @@
     <!-- ---- DASHBOARD ---- -->
     <div class="tab-panel active" id="tab-dashboard">
       <div class="stat-row" id="stat-row"></div>
+      <div class="card" id="update-section" style="margin-bottom:20px;">
+        <h3 style="margin-top:0;">Actualización automática (padrón ANR)</h3>
+        <div class="stat-row" id="update-row" style="margin-bottom:0;"></div>
+        <p id="update-lastsync" style="color:var(--muted); font-size:13px; margin:12px 0 0;"></p>
+      </div>
       <div class="chart-row">
         <div class="card">
           <h3>Avance por Colegio Electoral</h3>
@@ -238,7 +243,7 @@
             <thead>
               <tr>
                 <th>Master</th><th>Tel. master</th><th>Elector</th><th>Tel. elector</th><th>Voto</th>
-                <th>Colegio</th><th>Móvil</th><th>Chofer</th><th>Tel. chofer</th><th></th>
+                <th>Colegio</th><th>Móvil</th><th>Chofer</th><th>Tel. chofer</th><th>Transporte (ANR)</th><th></th>
               </tr>
             </thead>
             <tbody id="table-body"></tbody>
@@ -711,9 +716,56 @@ async function loadData(){
   allRows = data || [];
   renderColegioFilter();
   renderStats();
+  renderActualizacion();
   renderCharts();
   renderTable();
   renderMastersTable();
+}
+
+// Compara una fecha contra "hoy" usando la zona horaria de Paraguay,
+// sin importar en qué zona horaria esté el navegador de quien mira la app.
+const TZ_PY = 'America/Asuncion';
+const fmtFechaPY = new Intl.DateTimeFormat('en-CA', { timeZone: TZ_PY, year:'numeric', month:'2-digit', day:'2-digit' });
+function esDeHoyPY(fechaStr){
+  if(!fechaStr) return false;
+  return fmtFechaPY.format(new Date(fechaStr)) === fmtFechaPY.format(new Date());
+}
+
+/* ---------- ACTUALIZACIÓN AUTOMÁTICA (puente con DIC2026) ---------- */
+function renderActualizacion(){
+  // Los registros creados por el puente automático (cron) no tienen
+  // created_by (se insertan sin un usuario logueado detrás); los cargados
+  // a mano desde la app sí lo tienen. Así distinguimos "nuevo por sync" de
+  // "cargado manualmente" sin necesitar una columna aparte.
+  const electoresNuevosHoy = allRows.filter(r => !r.created_by && esDeHoyPY(r.created_at)).length;
+  const mastersNuevosHoy = allMasters.filter(m => !m.created_by && esDeHoyPY(m.created_at)).length;
+  const actualizadosHoy = allRows.filter(r => r.transporte_sync_at && esDeHoyPY(r.transporte_sync_at) && r.created_by).length;
+
+  document.getElementById('update-row').innerHTML = `
+    <div class="stat"><div class="num">${electoresNuevosHoy}</div><div class="label">Electores nuevos hoy</div></div>
+    <div class="stat"><div class="num">${mastersNuevosHoy}</div><div class="label">Masters nuevos hoy</div></div>
+    <div class="stat"><div class="num">${actualizadosHoy}</div><div class="label">Electores actualizados hoy</div></div>
+  `;
+
+  const ultimaSync = allRows
+    .map(r => r.transporte_sync_at)
+    .filter(Boolean)
+    .sort()
+    .pop();
+
+  const lastSyncEl = document.getElementById('update-lastsync');
+  if(ultimaSync){
+    const hora = new Intl.DateTimeFormat('es-PY', { timeZone: TZ_PY, hour:'2-digit', minute:'2-digit' }).format(new Date(ultimaSync));
+    // Si la última sync no fue hoy, aclaramos la fecha completa.
+    if(!esDeHoyPY(ultimaSync)){
+      const fecha = new Intl.DateTimeFormat('es-PY', { timeZone: TZ_PY, day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(ultimaSync));
+      lastSyncEl.textContent = `Última sincronización con DIC2026: ${fecha} (hora de Paraguay).`;
+    } else {
+      lastSyncEl.textContent = `Última sincronización con DIC2026: hoy a las ${hora} (hora de Paraguay).`;
+    }
+  } else {
+    lastSyncEl.textContent = 'Todavía no se registró ninguna sincronización automática.';
+  }
 }
 
 /* ---------- ESTADÍSTICAS ---------- */
@@ -723,6 +775,7 @@ function renderStats(){
   const aFavor = allRows.filter(r => r.voto === 'A favor').length;
   const sinMaster = allRows.filter(r => !r.master_id).length;
   const duplicados = getDuplicateRowIds().size;
+  const necesitanTransporte = allRows.filter(r => necesitaTransporte(r.necesita_transporte)).length;
 
   document.getElementById('stat-row').innerHTML = `
     <div class="stat"><div class="num">${total}</div><div class="label">Electores cargados</div></div>
@@ -730,6 +783,7 @@ function renderStats(){
     <div class="stat"><div class="num">${aFavor}</div><div class="label">A favor</div></div>
     <div class="stat" style="cursor:pointer;" onclick="verSinMaster()" title="Ver el listado filtrado"><div class="num">${sinMaster}</div><div class="label">Sin master asignado</div></div>
     <div class="stat" style="cursor:pointer;" onclick="verDuplicados()" title="Ver el listado filtrado"><div class="num">${duplicados}</div><div class="label">Electores duplicados</div></div>
+    <div class="stat"><div class="num">${necesitanTransporte}</div><div class="label">Necesitan transporte (ANR)</div></div>
   `;
 }
 
@@ -880,12 +934,28 @@ function renderTable(){
       <td>${r.movil_asignado || ''}</td>
       <td>${r.chofer || ''}</td>
       <td>${r.telefono_chofer || ''}</td>
+      <td>${necesitaTransporteBadge(r.necesita_transporte)}</td>
       <td>
         <button class="btn-edit" onclick="editElector('${r.id}')">Editar</button>
         <button class="btn-danger" onclick="deleteElector('${r.id}')">Borrar</button>
       </td>
     </tr>
   `).join('');
+}
+
+// Interpreta el texto que llega tal cual desde DIC2026 (campo "transporte").
+// Vacío o valores tipo "no"/"ninguno" se toman como que NO necesita.
+// Cualquier valor cargado en este campo ya significa que necesita transporte
+// (en DIC2026 los masters solo lo completan cuando el elector lo necesita).
+function necesitaTransporte(valor){
+  return !!(valor && valor.trim());
+}
+
+function necesitaTransporteBadge(valor){
+  if(!valor) return '<span style="color:var(--muted);">—</span>';
+  const si = necesitaTransporte(valor);
+  const color = si ? 'var(--danger)' : 'var(--muted)';
+  return `<span style="color:${color}; font-weight:${si ? 600 : 400};">${valor}</span>`;
 }
 
 checkSession();
