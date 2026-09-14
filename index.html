@@ -772,20 +772,22 @@ function renderActualizacion(){
 
 /* ---------- ESTADÍSTICAS ---------- */
 function renderStats(){
-  const total = allRows.length;
+  // "Electores cargados" cuenta SOLO a quienes tienen confirmado
+  // necesita_transporte = 'NECESITA'. Los que todavía no matchearon con
+  // DIC2026 (vacío) y los que confirmaron que NO necesitan quedan afuera
+  // de este número a pedido explícito.
+  const total = allRows.filter(r => necesitaTransporte(r.necesita_transporte)).length;
   const colegios = new Set(allRows.map(r => r.colegio_electoral).filter(Boolean)).size;
   const aFavor = allRows.filter(r => r.voto === 'A favor').length;
   const sinMaster = allRows.filter(r => !r.master_id).length;
   const duplicados = getDuplicateRowIds().size;
-  const necesitanTransporte = allRows.filter(r => necesitaTransporte(r.necesita_transporte)).length;
 
   document.getElementById('stat-row').innerHTML = `
-    <div class="stat"><div class="num">${total}</div><div class="label">Electores cargados</div></div>
+    <div class="stat"><div class="num">${total}</div><div class="label">Electores cargados (necesitan transporte)</div></div>
     <div class="stat"><div class="num">${colegios}</div><div class="label">Colegios electorales</div></div>
     <div class="stat"><div class="num">${aFavor}</div><div class="label">A favor</div></div>
     <div class="stat" style="cursor:pointer;" onclick="verSinMaster()" title="Ver el listado filtrado"><div class="num">${sinMaster}</div><div class="label">Sin master asignado</div></div>
     <div class="stat" style="cursor:pointer;" onclick="verDuplicados()" title="Ver el listado filtrado"><div class="num">${duplicados}</div><div class="label">Electores duplicados</div></div>
-    <div class="stat"><div class="num">${necesitanTransporte}</div><div class="label">Necesitan transporte (ANR)</div></div>
   `;
 }
 
