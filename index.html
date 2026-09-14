@@ -162,6 +162,7 @@
         <div class="card">
           <h3>Avance por Colegio Electoral</h3>
           <canvas id="chart-colegio"></canvas>
+          <p id="chart-colegio-note" style="color:var(--muted); font-size:12px; margin:10px 0 0;"></p>
         </div>
         <div class="card">
           <h3>Distribución del Voto</h3>
@@ -797,12 +798,37 @@ function countBy(field){
   return map;
 }
 
+// Cuenta electores por colegio SIN incluir "Sin dato": en este gráfico en
+// particular, mezclar los electores sin colegio cargado aplasta visualmente
+// las barras reales (puede haber cientos sin dato y unos pocos por colegio).
+function countByColegioConDato(){
+  const map = {};
+  let sinDato = 0;
+  allRows.forEach(r => {
+    const v = (r.colegio_electoral || '').trim();
+    if(!v){ sinDato++; return; }
+    map[v] = (map[v] || 0) + 1;
+  });
+  return { map, sinDato };
+}
+
 function renderCharts(){
-  const byColegio = countBy('colegio_electoral');
+  const { map: byColegio, sinDato: colegioSinDato } = countByColegioConDato();
   const byVoto = countBy('voto');
 
-  const colegioLabels = Object.keys(byColegio);
-  const colegioData = Object.values(byColegio);
+  const colegioLabels = Object.keys(byColegio).sort((a, b) => {
+    const na = parseFloat(a), nb = parseFloat(b);
+    if(!isNaN(na) && !isNaN(nb)) return na - nb;
+    return a.localeCompare(b, 'es');
+  });
+  const colegioData = colegioLabels.map(l => byColegio[l]);
+
+  const colegioNote = document.getElementById('chart-colegio-note');
+  if(colegioNote){
+    colegioNote.textContent = colegioSinDato > 0
+      ? `${colegioSinDato} elector(es) sin colegio electoral cargado (no se muestran en este gráfico).`
+      : '';
+  }
 
   const votoLabels = Object.keys(byVoto);
   const votoData = Object.values(byVoto);
