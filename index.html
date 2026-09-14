@@ -775,8 +775,11 @@ function renderStats(){
   // "Electores cargados" cuenta SOLO a quienes tienen confirmado
   // necesita_transporte = 'NECESITA'. Los que todavía no matchearon con
   // DIC2026 (vacío) y los que confirmaron que NO necesitan quedan afuera
-  // de este número a pedido explícito.
-  const total = allRows.filter(r => necesitaTransporte(r.necesita_transporte)).length;
+  // de este número a pedido explícito. Además, si el master de ese elector
+  // fue borrado (master_id null), tampoco se cuenta: si se borró el master
+  // seguramente fue porque estaba duplicado, así que sus electores huérfanos
+  // no deben sumar acá.
+  const total = allRows.filter(r => necesitaTransporte(r.necesita_transporte) && r.master_id).length;
   const colegios = new Set(allRows.map(r => r.colegio_electoral).filter(Boolean)).size;
   const aFavor = allRows.filter(r => r.voto === 'A favor').length;
   const sinMaster = allRows.filter(r => !r.master_id).length;
